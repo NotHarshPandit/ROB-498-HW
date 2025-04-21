@@ -92,8 +92,19 @@ def obstacle_free_pushing_reward_function_object_pose_space(state, action):
         - The target pose is available as TARGET_POSE
         - BOX_SIZE defines the threshold for reaching the target
     """
-    reward = None
+    reward = 0.0
     # --- Your code here
+
+    # when the state is close to the target pose
+    if np.allclose(state[:2], TARGET_POSE[:2], atol=1e-2):
+        reward += 1000
+    else:
+        # find the distance between current state and Target and get reward based on it
+        distance = np.linalg.norm(state - TARGET_POSE)
+        reward += 10*distance
+        if (distance < BOX_SIZE):
+            reward += 1000
+        # if (state[:2] >= space_limits)
 
     # ---
     return reward

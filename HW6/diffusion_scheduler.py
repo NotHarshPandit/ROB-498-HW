@@ -103,8 +103,11 @@ class DDPMScheduler:
         noisy_samples = None
         ################################
         #######  Your code here  #######
-    
-
+        B,_,_ = original_samples.shape
+        alpha_t = alphas_cumprod[timesteps].reshape(B,1,1)
+        sqrt_alpha_prod = torch.sqrt(alpha_t) * original_samples
+        sqrt_one_minus_alpha_prod = torch.sqrt(1-alpha_t) * noise
+        noisy_samples = sqrt_alpha_prod + sqrt_one_minus_alpha_prod
         #######  Your code finish  #######
         ##################################
         return noisy_samples
@@ -152,7 +155,16 @@ class DDPMScheduler:
         ################################
         #######  Your code here  #######
 
-   
+        # predicting the original sample
+    
+        pred_original_sample = (sample - torch.sqrt(1 - alpha_prod_t) * pred_noise) / torch.sqrt(alpha_prod_t)
+
+        # predicting previous sample
+
+        pred_original_sample_coeff = torch.sqrt(alpha_prod_t_prev) * (1 - alpha_prod_t) / (1 - alpha_prod_t_prev)
+        current_sample_coeff = torch.sqrt(alpha_prod_t_prev) * (1 - alpha_prod_t) / (1 - alpha_prod_t_prev)
+        pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
+
         #######  Your code finish  #######
         ##################################
         pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
