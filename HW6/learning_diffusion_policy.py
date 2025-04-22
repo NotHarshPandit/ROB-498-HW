@@ -156,8 +156,11 @@ class DiffusionPolicy:
         # sampling timesteps
         timesteps = torch.randint(0,self.num_timesteps,(B,))
         # genereating noisy actions
+        
         noisy_actions = self.noise_schedule.add_noise(original_samples=naction, noise=noise, timesteps=timesteps)
+        timesteps = timesteps.to(noisy_actions.device)
         noise_pred = self.model(noisy_actions, timesteps, global_cond=obs_cond)
+
         loss = torch.nn.functional.mse_loss(noise_pred,noise)
 
         #######  Your code finish  #######
@@ -181,17 +184,15 @@ class DiffusionPolicy:
 
             #################################
             #######  Your code here  ########
-            noise = torch.rand_like(naction) * 0.05
-            noisy_actions = action + noise
 
-            for timesteps in range(self.noise_schedule.timesteps):
-                for i in range (self.obs_horizon-1,self.pred_horizon):
-                    # get the current observation condition
-                    noise_pred = self.model(noisy_actions, timesteps, global_cond=obs_cond)
-                    # Reverse diffusion step
-                    noisy_actions[i] = noisy_actions[i] - noise_pred  
+            timesteps = self.noise_schedule.timesteps.to(dtype=torch.long, device=self.device)
+            for t in (timesteps):  
+                noisy_actions = naction
+                # Predict noise for all timesteps at once (optional: per-step refinement below)
+                noise_pred = self.model(noisy_actions, t, global_cond=obs_cond)
 
-
+                for i in range(self.obs_horizon - 1, self.pred_horizon):
+                    naction[0, i] = noisy_actions[0, i] - noise_pred[0, i]  
             #######  Your code finish  #######
             ##################################
         # (B, pred_horizon, action_dim)

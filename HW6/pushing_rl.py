@@ -59,6 +59,11 @@ def execute_policy(env, policy, num_steps=20):
         action_i, _states = policy.predict(state)
         state, reward, done, info = env.step(action_i)
         states.append(state)
+
+        # 
+        rewards.append(reward)
+        # 
+
         # Check if we have reached the goal
         end_pose = env.get_object_pos_planar()
         # Evaluate only position, not orientation
@@ -95,16 +100,24 @@ def obstacle_free_pushing_reward_function_object_pose_space(state, action):
     reward = 0.0
     # --- Your code here
 
-    # when the state is close to the target pose
-    if np.allclose(state[:2], TARGET_POSE[:2], atol=1e-2):
-        reward += 1000
-    else:
-        # find the distance between current state and Target and get reward based on it
-        distance = np.linalg.norm(state - TARGET_POSE)
-        reward += 10*distance
-        if (distance < BOX_SIZE):
-            reward += 1000
-        # if (state[:2] >= space_limits)
 
+    # find the distance between current state and Target and get reward based on it
+    # distance = np.linalg.norm(state - TARGET_POSE)
+    # reward -= 12*distance
+    # if (distance < BOX_SIZE):
+    #         reward += 1000
+    # if np.allclose(state[:2], TARGET_POSE[:2], atol=1e-2):
+    #     reward += 1000
+    space_limits = [np.array([0.05, -0.35]), np.array([.8, 0.35])]
+    if (state[0] < space_limits[0][0] or state[0] > space_limits[1][0] or
+            state[1] < space_limits[0][1] or state[1] > space_limits[1][1]):
+        reward -= 1000
+    position_distance = np.linalg.norm(state[:2] - TARGET_POSE[:2])
+    distance_reward = -position_distance  # Penalize distance
+    if position_distance < BOX_SIZE:
+        distance_reward += 1000  # Big bonus for being close
+
+    reward += 5 * distance_reward 
+  
     # ---
     return reward
