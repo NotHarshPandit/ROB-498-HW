@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-import numpy as np
 import pybullet as p
 import pybullet_data as pd
 from base_env import BaseEnv
@@ -39,10 +38,8 @@ class MyCartpoleEnv(BaseEnv):
         else:
             self.state = np.random.uniform(low=-0.05, high=0.05, size=(6,))
         p.resetSimulation()
-        # p.setAdditionalSearchPath(pd.getDataPath())
         p.setAdditionalSearchPath(os.path.dirname(os.path.abspath(__file__)))
         self.cartpole = p.loadURDF('cartpole.urdf')
-        # self.cartpole = p.loadURDF('cartpole.urdf')
         p.setGravity(0, 0, -9.81)
         p.setTimeStep(self.dt)
         p.setRealTimeSimulation(0)
@@ -71,7 +68,6 @@ class MyCartpoleEnv(BaseEnv):
         x, x_dot = p.getJointState(self.cartpole, 0)[0:2]
         theta, theta_dot = p.getJointState(self.cartpole, 1)[0:2]
         theta_1, theta_dot_1 = p.getJointState(self.cartpole, 2)[0:2]
-        # it looks like the state is not updated in the simulation
         theta_1 += theta
         theta_dot_1 += theta_dot
         return np.array([x, theta, theta_1, x_dot, theta_dot, theta_dot_1])
@@ -259,44 +255,30 @@ class MyCartpoleEnv(BaseEnv):
         # x,theta1,theta2,x_dot,theta1_dot,theta2_dot = torch.chunk(state, 6, dim=1)
 
         # D and inverse of D
-        D = torch.tensor([[d1, d2*torch.cos(theta1) , d3*torch.cos(theta2)], 
-                    [d2*torch.cos(theta1), d4, d5*torch.cos(theta1 - theta2)],
-                    [d3*torch.cos(theta2), d5*torch.cos(theta1 - theta2), d6]],dtype=x.dtype)
-        D_inv = torch.linalg.inv(D)
-        D_inv = D_inv.clone().detach().to(dtype=x.dtype)
+        D = torch.tensor([[d1,                   d2*torch.cos(theta1),        d3*torch.cos(theta2)       ],
+                      [d2*torch.cos(theta1), d4,                          d5*torch.cos(theta1-theta2)],
+                      [d3*torch.cos(theta2), d5*torch.cos(theta1-theta2), d6                         ]]).to(torch.float32)
+        C = torch.tensor([[0, -d2*torch.sin(theta1)*theta1_dot,        -d3*torch.sin(theta2)*theta2_dot      ], 
+                        [0, 0,                                       d5*torch.sin(theta1-theta2)*theta2_dot], 
+                        [0, -d5*torch.sin(theta1-theta2)*theta1_dot, 0                                     ]]).to(torch.float32)
+        G = torch.tensor([0, -f1*torch.sin(theta1), -f2*torch.sin(theta2)]).to(torch.float32)
+        H = torch.tensor([1, 0, 0]).to(torch.float32)
 
+        state_dot = state[3:] # [theta0_dot, theta1_dot, theta2_dot]
+        D_inv = torch.linalg.pinv(D)
+        state_dot_dot = -D_inv@C@state_dot - D_inv@G + D_inv@(H*action[0])
+        [theta0_dot2, theta1_dot2, theta2_dot2] = state_dot_dot
 
-        C = torch.tensor([[0, -d2*torch.sin(theta1)*theta1_dot, -d3*torch.sin(theta2)*theta2_dot],
-                    [d2*torch.sin(theta1)*theta1_dot, 0, d5*torch.sin(theta1 - theta2)*theta2_dot],
-                    [d3*torch.sin(theta2)*theta2_dot, -d5*torch.sin(theta1 - theta2)*theta1_dot, 0]],dtype=x.dtype)
-        
-        G = torch.tensor([[0],
-                    [-f1*torch.sin(theta1)],
-                    [-f2*torch.sin(theta2)]],dtype=x.dtype)
-        
-        H = torch.tensor([[1],
-                    [0],
-                    [0]],dtype=x.dtype)
-        # Compute the second derivatives of the state variables (x_ddot, theta_1_ddot, theta_2_ddot)
-        state_dot = torch.tensor([[x_dot], [theta1_dot], [theta2_dot]])  # Shape (3, 1)
-        temp = -torch.inverse(D) @ (C @ state_dot + G + H * action)  # Shape (3, 1)
-        
-        # Extract the accelerations (second derivatives of the states)
-        x_dot_dot = temp[0, 0]
-        theta_1_dot_dot = temp[1, 0]
-        theta_2_dot_dot = temp[2, 0]
-        
-        # Compute the new state using the previous state and computed accelerations
-        dt = 0.05  # time step, adjust as necessary
-        x_dot_new = x_dot + dt * x_dot_dot
-        theta_1_dot_new = theta1_dot + dt * theta_1_dot_dot
-        theta_2_dot_new = theta2_dot + dt * theta_2_dot_dot
-        x_new = x + dt * x_dot_new
-        theta_1_new = theta1 + dt * theta_1_dot_new
-        theta_2_new = theta2 + dt * theta_2_dot_new
+        dt = 0.05
+        theta0_next_dot = x + dt*theta0_dot2
+        theta1_next_dot = theta1_dot + dt*theta1_dot2
+        theta2_next_dot = theta2_dot + dt*theta2_dot2
 
-        # Pack the new state
-        next_state = torch.tensor([x_new, theta_1_new, theta_2_new, x_dot_new, theta_1_dot_new, theta_2_dot_new])
+        theta0_next = x + dt*theta0_next_dot
+        theta1_next = theta1 + dt*theta1_next_dot
+        theta2_next = theta2 + dt*theta2_next_dot
+
+        next_state = torch.tensor([theta0_next, theta1_next, theta2_next, theta0_next_dot, theta1_next_dot, theta2_next_dot])
         return next_state
 
 

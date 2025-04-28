@@ -1,43 +1,55 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from mppi_control import MPPIController, get_cartpole_mppi_hyperparams
-import torch
+from ddp import DDPController
 from tqdm import tqdm
 import os
 from numpngw import write_apng
 
-def mppi_cartpole(env):
-    print("Starting MPPI control")
-    start_state = np.array([0, np.pi,np.pi,0, 0, 0], dtype=np.float32) + np.random.rand(6,)
-    env.reset(start_state)  
+def ddp_cartpole(env):
+    print("Starting DDP control")
+    start_state = np.array([0., np.pi, np.pi, 0., 0., 0.]) # fully down
+    goal_state = np.array([0., 0., 0., 0., 0., 0.])
+    env.reset(start_state)
     state = start_state.copy()
     goal_state = np.zeros(6)
-    controller = MPPIController(env, num_samples=500, horizon=30, hyperparams=get_cartpole_mppi_hyperparams())
-    controller.goal_state = torch.tensor(goal_state, dtype=torch.float32)
-    num_steps = 500
+    time_horizon = 10
+    ddp_hyperparams = {'epsilon': 1e-3,
+                       'max_iters': 100,
+                       'horizon': 20,
+                       'backtrack_max_iters': 10,
+                       'decay': 0.5,
+                       'error_Q': np.diag([0.05, 1, 1, 0.1, 0.1, 0.1])
+                       }
+    controller = DDPController(start_state, goal_state, ddp_hyperparams)
+    states_env = []
+    states_controller = []
     error = []
-    states = []
     frames = []
-    pbar = tqdm(range(num_steps))
+    num_steps = 150
+    error_threshold = 0.25
     lowest_error = None
+    pbar = tqdm(range(num_steps))
+    states_env.append(start_state)
     for _ in pbar:
-        state = torch.tensor(state, dtype=torch.float32)
-        control = controller.command(state)
-        state = env.step(control)
-        states.append(state)
-        error_i = np.linalg.norm(state-goal_state[:7])
-        error.append(error_i)
+        state_controller,action = controller.control()
+        states_controller.append(state_controller)
+        state_env = env.step(action)
+        state_env[0] = np.clip(state_env[0], -5, 5) # x position
+        states_env.append(state_env)
         img = env.render()
         frames.append(img)
-        pbar.set_description(f'Goal Error: {error_i:.4f}')
+        error_i = controller.calculate_error()
+        error.append(error_i)
         if lowest_error is None or error_i < lowest_error:
             lowest_error = error_i
         pbar.set_description(f'Goal Error: {error_i:.4f}, Lowest Error: {lowest_error:.4f}')
-        if error_i < .5:
+        if error_i < error_threshold:
+            print("Break")
             break
-    write_apng(os.path.join(os.getcwd(), "fig", "mppi_cartpole.gif"), frames, delay=100)
+    
+    write_apng(os.path.join(os.getcwd(), "fig", "ddp_cartpole.gif"), frames, delay=100)
     fig, axes = plt.subplots(3, 2, figsize=(8, 8))
-    states = np.array(states)
+    states = np.array(states_controller)
     goal_state = np.array(goal_state).reshape(1, 6)
     goal_state = np.repeat(goal_state, states.shape[0], axis=0)
     axes[0][0].plot(states[:, 0])
@@ -65,16 +77,15 @@ def mppi_cartpole(env):
     axes[2][1].plot(goal_state[:,5], '--')
     axes[2][1].title.set_text('theta2_dot')
     axes[2][1].legend(['actual', 'goal'])
-    output_file = os.path.join(os.getcwd(), "fig","Cart_States_MPPI.pdf")
+    output_file = os.path.join(os.getcwd(), "fig","DDP_Double_Inverted_Pendulum.pdf")
     plt.savefig(output_file)
     plt.close()
 
-
     error = np.array(error)
     plt.plot(error)
+    plt.title('Goal Error')
     plt.xlabel('Time Step')
     plt.ylabel('Error')
-    output_file = os.path.join(os.getcwd(), "fig","Cart_Error_MPPI.pdf")
+    output_file = os.path.join(os.getcwd(), "fig","Cart_Error_ddp.pdf")
     plt.savefig(output_file)
     return 0
-    

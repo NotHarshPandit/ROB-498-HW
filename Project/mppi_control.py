@@ -25,35 +25,7 @@ def get_cartpole_mppi_hyperparams():
                         [0,0,0, 0.1,0,0],
                         [0,0,0, 0,0.1,0],
                         [0,0,0, 0.0,0,0.1]])
-    hyperparams['noise_sigma'] = torch.eye(action_size) * 20
-    # ---
-    return hyperparams
-
-
-def get_panda_mppi_hyperparams():
-    """
-    Returns a dictionary containing the hyperparameters for running MPPI on the panda environment
-    The required parameters are:
-     * lambda: float parameter between 0. and 1. used to weight samples.
-     * Q: torch tensor fo shape (state_size, state_size) representing the state quadratic cost.
-     * noise_sigma: torch tensor fo size (action_size, action_size) representing the covariance matrix  of the random action perturbations.
-    """
-    action_size = 7
-    state_size = 14
-    hyperparams = {
-        'lambda': None,
-        'Q': None,
-        'noise_sigma': None,
-    }
-    # --- Your code here
-    hyperparams['lambda'] = 0.01  
-    number_of_joints = int(state_size/2)  
-    Q_theta = torch.eye(number_of_joints)*0.1
-    Q_theta_dot =torch.eye(number_of_joints)*0.01
-
-    hyperparams['Q'] = torch.eye(state_size)
-    hyperparams['Q'][:number_of_joints, :number_of_joints] = Q_theta
-    hyperparams['Q'][number_of_joints:, number_of_joints:] = Q_theta_dot
+    # hyperparams['Q'] = torch.diag(torch.tensor([0.05, 1, 1, 0.1, 0.1, 0.1]))
     hyperparams['noise_sigma'] = torch.eye(action_size) * 20
     # ---
     return hyperparams
@@ -156,7 +128,7 @@ class MPPIController(object):
         # difference has size (K, T, state_size)
         # Q has size (state_size, state_size)
 
-        difference = trajectory - self.goal_state  
+        difference = trajectory - self.goal_state 
         state_cost = torch.einsum('ij,ktj->kti', self.Q,difference)
         state_cost = torch.einsum('ktj,ktj->k', state_cost, difference)
         
